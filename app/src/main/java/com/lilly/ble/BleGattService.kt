@@ -1,5 +1,6 @@
 package com.lilly.ble
 
+import android.annotation.SuppressLint
 import android.app.*
 import android.bluetooth.*
 import android.content.Context
@@ -13,6 +14,7 @@ import androidx.core.app.NotificationCompat.PRIORITY_MIN
 import com.lilly.ble.ui.main.MainActivity
 import com.lilly.ble.util.BluetoothUtils
 import org.koin.android.ext.android.inject
+import java.time.Instant
 import java.util.*
 
 
@@ -27,10 +29,45 @@ class BleGattService : Service() {
 
     // ble Gatt
     private var bleGatt: BluetoothGatt? = null
+//    var begin: Long = 0;
+
+    // 칼만 필터의 초기 상태
+    var kalmanGain = 0.0
+    var currentEstimate = 0.0
+    var currentErrorCovariance = 1.0
+
+    // 칼만 필터 파라미터
+    val processNoise = 0.001
+    val measurementNoise = 1.0
+
+    fun kalmanFilter(input: Double): Double {
+        // 예측 단계
+        val predictedEstimate = currentEstimate
+        val predictedErrorCovariance = currentErrorCovariance + processNoise
+
+        // 업데이트 단계
+        kalmanGain = predictedErrorCovariance / (predictedErrorCovariance + measurementNoise)
+        currentEstimate = predictedEstimate + kalmanGain * (input - predictedEstimate)
+        currentErrorCovariance = (1 - kalmanGain) * predictedErrorCovariance
+
+        return currentEstimate
+    }
+
+    @SuppressLint("MissingPermission")
+    val runnable = Runnable {
+        // 쓰레드에서 수행할 작업 정의
+        while (true) {
+            if (bleGatt !== null) {
+                bleGatt?.readRemoteRssi()
+            }
+            Thread.sleep(200);
+        }
+    }
+    val thread = Thread(runnable)
 
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "Action Received = ${intent?.action}")
+//        Log.d(TAG, "Action Received = ${intent?.action}")
         // intent가 시스템에 의해 재생성되었을때 null값이므로 Java에서는 null check 필수
         when (intent?.action) {
             Actions.START_FOREGROUND -> {
@@ -58,11 +95,13 @@ class BleGattService : Service() {
 
     private fun startForegroundService() {
         startForeground()
+        thread.start()
     }
 
     private fun stopForegroundService() {
         stopForeground(true)
         stopSelf()
+        thread.stop();
     }
 
 
@@ -86,13 +125,14 @@ class BleGattService : Service() {
     }
 
 
+    @SuppressLint("UnspecifiedImmutableFlag")
     private fun startForeground() {
         val channelId =
             createNotificationChannel()
 
         val notificationBuilder = NotificationCompat.Builder(this, channelId )
         val notificationIntent: Intent = Intent(this, MainActivity::class.java)
-        val pendingIntent: PendingIntent = PendingIntent.getActivity(this,0,notificationIntent,0)
+        val pendingIntent: PendingIntent = PendingIntent.getActivity(this,0,notificationIntent,PendingIntent.FLAG_IMMUTABLE)
         val notification = notificationBuilder.setOngoing(true)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Service is running in background")
@@ -148,6 +188,7 @@ class BleGattService : Service() {
      * BLE gattClientCallback
      */
     private val gattClientCallback: BluetoothGattCallback = object : BluetoothGattCallback() {
+        @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             super.onConnectionStateChange(gatt, status, newState)
 
@@ -164,9 +205,17 @@ class BleGattService : Service() {
                 broadcastUpdate(Actions.GATT_CONNECTED, "Connected")
                 Log.d(TAG, "Connected to the GATT server")
                 gatt.discoverServices()
+                gatt.readRemoteRssi()
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 broadcastUpdate(Actions.GATT_DISCONNECTED, "Disconnected")
             }
+        }
+
+        override fun onReadRemoteRssi(gatt: BluetoothGatt?, rssi: Int, status: Int) {
+            super.onReadRemoteRssi(gatt, rssi, status)
+
+            val value = kalmanFilter(rssi.toDouble()).toFloat()
+            Log.d(TAG, "RSSI : ${value}")
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
@@ -180,9 +229,6 @@ class BleGattService : Service() {
             // log for successful discovery
             bleGatt = gatt
             Log.d(TAG, "Services discovery is successful")
-
-
-
         }
 
         override fun onCharacteristicChanged(
@@ -199,9 +245,11 @@ class BleGattService : Service() {
             characteristic: BluetoothGattCharacteristic?,
             status: Int
         ) {
+//            val end = System.nanoTime()
             super.onCharacteristicWrite(gatt, characteristic, status)
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                Log.d(TAG, "Characteristic written successfully")
+//                Log.d(TAG, "Characteristic written successfully")
+//                Log.d(TAG, "time : ${end - begin} nanosecond")
             } else {
                 disconnectGattServer("Characteristic write unsuccessful, status: $status")
             }
@@ -233,23 +281,25 @@ class BleGattService : Service() {
             broadcastUpdate(Actions.READ_CHARACTERISTIC ,msg)
             Log.d(TAG, "read: $msg")
         }
-
-
     }
 
     /**
      * Connect to the ble device
      */
+    @SuppressLint("MissingPermission")
     private fun connectDevice(device: BluetoothDevice?) {
         // update the status
         broadcastUpdate(Actions.STATUS_MSG, "Connecting to ${device?.address}")
         bleGatt = device?.connectGatt(MyApplication.applicationContext(), false, gattClientCallback)
+
+
     }
 
 
     /**
      * Disconnect Gatt Server
      */
+    @SuppressLint("MissingPermission")
     fun disconnectGattServer(msg: String) {
         Log.d("hereigo", "Closing Gatt connection")
         // disconnect and close the gatt
@@ -260,6 +310,7 @@ class BleGattService : Service() {
         broadcastUpdate(Actions.GATT_DISCONNECTED, msg)
     }
 
+    @SuppressLint("MissingPermission")
     private fun writeData(cmdByteArray: ByteArray) {
         val cmdCharacteristic = BluetoothUtils.findCommandCharacteristic(bleGatt!!)
         // disconnect if the characteristic is not found
@@ -269,8 +320,13 @@ class BleGattService : Service() {
             return
         }
 
+//        Log.d(TAG, cmdByteArray.toString())
+
         cmdCharacteristic.value = cmdByteArray
+//        begin = System.nanoTime()
+//        val success: Boolean = bleGatt!!.writeCharacteristic(cmdCharacteristic)
         val success: Boolean = bleGatt!!.writeCharacteristic(cmdCharacteristic)
+
         // check the result
         if (!success) {
             Log.e(TAG, "Failed to write command")
@@ -278,6 +334,7 @@ class BleGattService : Service() {
         myRepository.cmdByteArray = null
 
     }
+    @SuppressLint("MissingPermission")
     private fun startNotification(){
         // find command characteristics from the GATT server
         val respCharacteristic = bleGatt?.let { BluetoothUtils.findResponseCharacteristic(it) }
@@ -295,6 +352,7 @@ class BleGattService : Service() {
         descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
         bleGatt?.writeDescriptor(descriptor)
     }
+    @SuppressLint("MissingPermission")
     private fun stopNotification(){
         // find command characteristics from the GATT server
         val respCharacteristic = bleGatt?.let { BluetoothUtils.findResponseCharacteristic(it) }

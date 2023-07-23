@@ -1,5 +1,6 @@
 package com.lilly.ble.viewmodel
 
+import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
@@ -30,7 +31,7 @@ class BleViewModel(private val myRepository: MyRepository) : ViewModel() {
         get() = myRepository.isRead
 
     val _isConnect : LiveData<Event<Boolean>>
-       get() = myRepository.isConnected
+        get() = myRepository.isConnected
 
     // ble manager
     val bleManager: BluetoothManager =
@@ -66,6 +67,7 @@ class BleViewModel(private val myRepository: MyRepository) : ViewModel() {
         startScan()
     }
 
+    @SuppressLint("MissingPermission")
     fun startScan() {
         // check ble adapter and ble enabled
         if (bleAdapter == null || !bleAdapter?.isEnabled!!) {
@@ -96,6 +98,7 @@ class BleViewModel(private val myRepository: MyRepository) : ViewModel() {
         Timer("SettingUp", false).schedule(3000) { stopScan() }
     }
 
+    @SuppressLint("MissingPermission")
     @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     fun stopScan(){
         bleAdapter?.bluetoothLeScanner?.stopScan(BLEScanCallback)
@@ -112,6 +115,7 @@ class BleViewModel(private val myRepository: MyRepository) : ViewModel() {
      */
     private val BLEScanCallback: ScanCallback = @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     object : ScanCallback() {
+        @SuppressLint("MissingPermission")
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             super.onScanResult(callbackType, result)
             Log.i(TAG, "Remote device name: " + result.device.name)
@@ -133,6 +137,7 @@ class BleViewModel(private val myRepository: MyRepository) : ViewModel() {
         /**
          * Add scan result
          */
+        @SuppressLint("MissingPermission")
         private fun addScanResult(result: ScanResult) {
             // get scanned device
             val device = result.device

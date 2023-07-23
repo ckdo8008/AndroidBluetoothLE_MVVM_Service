@@ -1,5 +1,6 @@
 package com.lilly.ble.ui.main
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
@@ -72,6 +73,7 @@ class MainActivity : AppCompatActivity() {
 
     }
 
+    @SuppressLint("SuspiciousIndentation")
     private fun initObserver(binding: ActivityBleMainBinding){
         viewModel.requestEnableBLE.observe(this, {
             it.getContentIfNotHandled()?.let {
@@ -99,13 +101,13 @@ class MainActivity : AppCompatActivity() {
             val now = System.currentTimeMillis()
             val datef = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
             val timestamp = datef.format(Date(now))
-                binding.txtRead.append("[${timestamp}]\t$it\n")
-                if ((binding.txtRead.measuredHeight - binding.scroller.scrollY) <=
-                    (binding.scroller.height + binding.txtRead.lineHeight)) {
-                    binding.scroller.post {
-                        binding.scroller.smoothScrollTo(0, binding.txtRead.bottom)
-                    }
+            binding.txtRead.append("[${timestamp}]\t$it\n")
+            if ((binding.txtRead.measuredHeight - binding.scroller.scrollY) <=
+                (binding.scroller.height + binding.txtRead.lineHeight)) {
+                binding.scroller.post {
+                    binding.scroller.smoothScrollTo(0, binding.txtRead.bottom)
                 }
+            }
 
         })
     }

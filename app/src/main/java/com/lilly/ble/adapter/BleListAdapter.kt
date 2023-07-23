@@ -48,6 +48,7 @@ class BleListAdapter
     inner class BleViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
 
 
+        @SuppressLint("MissingPermission")
         fun bind(currentDevice: BluetoothDevice?) {
             val bleName = itemView.findViewById<TextView>(R.id.ble_name)
             bleName.text = currentDevice?.name
